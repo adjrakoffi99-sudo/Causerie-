@@ -1,28 +1,211 @@
-const API=(location.hostname==="localhost"||location.hostname==="127.0.0.1")?"http://localhost:3000/api":"/api";
-let token=localStorage.getItem("causerie_token"), me=null, currentUser=null, users=[], tracks=[], currentTrack=-1;
-const $=id=>document.getElementById(id);
-async function api(path,opts={}){opts.headers={...(opts.headers||{}),"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})};const r=await fetch(API+path,opts);const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||"Erreur serveur");return d}
-function showApp(){ $("auth").hidden=true;$("app").hidden=false;$("welcome").textContent="Bonjour "+me.name+" 👋";loadUsers()}
-function showAuth(){ $("auth").hidden=false;$("app").hidden=true}
-async function register(){try{me=await api("/auth/register",{method:"POST",body:JSON.stringify({name:$("name").value.trim()||"Moi",phone:$("phone").value.trim(),password:$("password").value})});token=me.token;localStorage.setItem("causerie_token",token);$("status").textContent="Connecté";showApp()}catch(e){$("authMsg").textContent=e.message}}
-async function login(){try{me=await api("/auth/login",{method:"POST",body:JSON.stringify({phone:$("phone").value.trim(),password:$("password").value})});token=me.token;localStorage.setItem("causerie_token",token);$("status").textContent="Connecté";showApp()}catch(e){$("authMsg").textContent=e.message}}
-async function loadUsers(){try{users=await api("/users");renderUsers(users)}catch(e){}}
-function renderUsers(list){$("users").innerHTML=list.map(u=>`<div class="user" data-id="${u.id}">👤 ${esc(u.name)}<small> ${esc(u.phone)}</small></div>`).join("")||"Aucun utilisateur";document.querySelectorAll(".user").forEach(x=>x.onclick=()=>selectUser(Number(x.dataset.id)))}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-async function selectUser(id){currentUser=users.find(x=>x.id===id);$("chatTitle").textContent=currentUser.name;try{const d=await api("/messages/"+id);$("messages").innerHTML=d.map(m=>`<div class="msg"><b>${esc(m.sender_name)}</b>: ${esc(m.body)}<small> ${new Date(m.created_at).toLocaleTimeString()}</small></div>`).join("");$("messages").scrollTop=1e9}catch(e){}}
-async function send(){if(!currentUser||!$("message").value.trim())return;const body=$("message").value.trim();try{await api("/messages",{method:"POST",body:JSON.stringify({to:currentUser.id,body})});$("message").value="";selectUser(currentUser.id)}catch(e){alert(e.message)}}
-$("register").onclick=register;$("login").onclick=login;$("find").onclick=()=>{const q=$("search").value.toLowerCase();renderUsers(users.filter(u=>(u.name+" "+u.phone).toLowerCase().includes(q)))};$("send").onclick=send;$("message").onkeydown=e=>{if(e.key==="Enter")send()};$("logout").onclick=()=>{localStorage.removeItem("causerie_token");token=null;location.reload()};
+const API = window.location.origin;
 
-const DB="CauserieMusicDB",STORE="tracks";
-function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:"id",autoIncrement:true});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
-async function saveTrack(t){const db=await openDB();return new Promise((res,rej)=>{const q=db.transaction(STORE,"readwrite").objectStore(STORE).add(t);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
-async function getTracks(){const db=await openDB();return new Promise((res,rej)=>{const q=db.transaction(STORE).objectStore(STORE).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
-function renderMusic(){const c=$("musicList");c.innerHTML=tracks.map((t,i)=>`<div class="music"><span>${esc(t.name)}</span><button onclick="playTrack(${i})">▶</button></div>`).join("")}
-window.playTrack=i=>{currentTrack=i;$("player").src=URL.createObjectURL(tracks[i].blob);$("player").play();renderMusic()}
-$("music").onchange=async e=>{for(const f of e.target.files){await saveTrack({name:f.name,blob:f,type:f.type})}tracks=await getTracks();renderMusic();if(currentTrack<0&&tracks.length)playTrack(0);e.target.value=""}
-$("prev").onclick=()=>{if(!tracks.length)return;currentTrack=(currentTrack-1+tracks.length)%tracks.length;playTrack(currentTrack)}
-$("next").onclick=()=>{if(!tracks.length)return;currentTrack=(currentTrack+1)%tracks.length;playTrack(currentTrack)}
-$("pause").onclick=()=>{const p=$("player");p.paused?p.play():p.pause()}
-$("player").onended=()=>{if(tracks.length){currentTrack=(currentTrack+1)%tracks.length;playTrack(currentTrack)}}
-getTracks().then(x=>{tracks=x;renderMusic()});
-if(token){api("/me").then(x=>{me=x;$("status").textContent="Connecté";showApp()}).catch(()=>{localStorage.removeItem("causerie_token");token=null})}
+// ===============================
+// Éléments de l'interface
+// ===============================
+
+const statusEl = document.querySelector("header")?.querySelector("span:last-child");
+
+const inputs = document.querySelectorAll("input");
+
+const nameInput =
+  document.querySelector('input[placeholder="Nom"]') ||
+  document.querySelector('input[name="name"]');
+
+const phoneInput =
+  document.querySelector('input[placeholder="Numéro de téléphone"]') ||
+  document.querySelector('input[name="phone"]');
+
+const passwordInput =
+  document.querySelector('input[placeholder="Mot de passe"]') ||
+  document.querySelector('input[name="password"]');
+
+const buttons = Array.from(document.querySelectorAll("button"));
+
+const registerBtn = buttons.find(b =>
+  b.textContent.trim().toLowerCase().includes("créer un compte")
+);
+
+const loginBtn = buttons.find(b =>
+  b.textContent.trim().toLowerCase().includes("connexion")
+);
+
+// ===============================
+// API
+// ===============================
+
+async function api(path, options = {}) {
+  const response = await fetch(API + path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  let data = {};
+
+  try {
+    data = await response.json();
+  } catch (_) {}
+
+  if (!response.ok) {
+    throw new Error(data.error || data.message || "Erreur serveur");
+  }
+
+  return data;
+}
+
+// ===============================
+// Vérification connexion serveur
+// ===============================
+
+async function checkServer() {
+  try {
+    const data = await api("/api/health");
+
+    console.log("Serveur connecté :", data);
+
+    if (statusEl) {
+      statusEl.textContent = "En ligne";
+      statusEl.style.color = "#22c55e";
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Serveur inaccessible :", error);
+
+    if (statusEl) {
+      statusEl.textContent = "Hors connexion";
+      statusEl.style.color = "#ef4444";
+    }
+
+    return false;
+  }
+}
+
+// ===============================
+// Inscription
+// ===============================
+
+if (registerBtn) {
+  registerBtn.addEventListener("click", async () => {
+    const name = nameInput?.value.trim();
+    const phone = phoneInput?.value.trim();
+    const password = passwordInput?.value;
+
+    if (!name || !phone || !password) {
+      alert("Veuillez remplir tous les champs.");
+      return;
+    }
+
+    registerBtn.disabled = true;
+    registerBtn.textContent = "Création...";
+
+    try {
+      const result = await api("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          phone,
+          password
+        })
+      });
+
+      if (result.token) {
+        localStorage.setItem("causerie_token", result.token);
+      }
+
+      alert("Compte créé avec succès !");
+
+      window.location.reload();
+
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      registerBtn.disabled = false;
+      registerBtn.textContent = "Créer un compte";
+    }
+  });
+}
+
+// ===============================
+// Connexion
+// ===============================
+
+if (loginBtn) {
+  loginBtn.addEventListener("click", async () => {
+    const phone = phoneInput?.value.trim();
+    const password = passwordInput?.value;
+
+    if (!phone || !password) {
+      alert("Entrez votre numéro et votre mot de passe.");
+      return;
+    }
+
+    loginBtn.disabled = true;
+    loginBtn.textContent = "Connexion...";
+
+    try {
+      const result = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          phone,
+          password
+        })
+      });
+
+      if (result.token) {
+        localStorage.setItem("causerie_token", result.token);
+      }
+
+      alert("Connexion réussie !");
+
+      window.location.reload();
+
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.textContent = "Connexion";
+    }
+  });
+}
+
+// ===============================
+// Récupérer le profil connecté
+// ===============================
+
+async function getMe() {
+  const token = localStorage.getItem("causerie_token");
+
+  if (!token) return null;
+
+  try {
+    return await api("/api/me", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  } catch (error) {
+    console.error("Session invalide :", error);
+    localStorage.removeItem("causerie_token");
+    return null;
+  }
+}
+
+// ===============================
+// Initialisation
+// ===============================
+
+document.addEventListener("DOMContentLoaded", async () => {
+  console.log("Causerie démarré");
+
+  await checkServer();
+
+  const user = await getMe();
+
+  if (user) {
+    console.log("Utilisateur connecté :", user);
+  }
+});

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Causerie</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><b>Causerie</b><span id="status">Hors connexion</span></header>
+
+<main>
+<section id="auth" class="card">
+<h1>Bienvenue sur Causerie</h1>
+<p>Crée ton compte ou connecte-toi.</p>
+<input id="name" placeholder="Nom" autocomplete="name">
+<input id="phone" placeholder="Numéro de téléphone" autocomplete="tel">
+<input id="password" type="password" placeholder="Mot de passe" autocomplete="current-password">
+<div class="row"><button id="register">Créer un compte</button><button id="login" class="secondary">Connexion</button></div>
+<p id="authMsg"></p>
+</section>
+
+<section id="app" hidden>
+<div class="card">
+<h2 id="welcome"></h2>
+<div class="row">
+<input id="search" placeholder="Rechercher un ami">
+<button id="find">Chercher</button>
+</div>
+<div id="users"></div>
+</div>
+
+<div class="card">
+<h2>Conversation</h2>
+<div id="chatTitle">Sélectionne un ami</div>
+<div id="messages"></div>
+<div class="row">
+<input id="message" placeholder="Écrire un message">
+<button id="send">Envoyer</button>
+</div>
+</div>
+
+<div class="card">
+<h2>🎵 Ma musique</h2>
+<input id="music" type="file" accept="audio/*" multiple>
+<div id="musicList"></div>
+<audio id="player" controls></audio>
+<div class="row">
+<button id="prev">⏮</button><button id="pause">⏯</button><button id="next">⏭</button>
+</div>
+</div>
+
+<button id="logout" class="danger">Se déconnecter</button>
+</section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+const express=require("express"),cors=require("cors"),bcrypt=require("bcryptjs"),jwt=require("jsonwebtoken"),{Pool}=require("pg");
+const app=express();app.use(cors());app.use(express.json());app.use(express.static("../frontend"));
+const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL?{rejectUnauthorized:false}:false});
+const SECRET=process.env.JWT_SECRET||"change-this-secret";
+function auth(req,res,next){try{const h=req.headers.authorization||"";req.user=jwt.verify(h.replace("Bearer ",""),SECRET);next()}catch(e){res.status(401).json({error:"Non authentifié"})}}
+app.get("/api/health",(req,res)=>res.json({ok:true,app:"Causerie"}));
+app.post("/api/auth/register",async(req,res)=>{try{const{name,phone,password}=req.body;if(!phone||!password)return res.status(400).json({error:"Téléphone et mot de passe requis"});const exists=await pool.query("select id from users where phone=$1",[phone]);if(exists.rowCount)return res.status(409).json({error:"Ce numéro existe déjà"});const hash=await bcrypt.hash(password,12);const q=await pool.query("insert into users(name,phone,password_hash) values($1,$2,$3) returning id,name,phone",[name||"Moi",phone,hash]);const u=q.rows[0];const token=jwt.sign({id:u.id},SECRET,{expiresIn:"30d"});res.json({...u,token})}catch(e){res.status(500).json({error:"Erreur serveur"})}});
+app.post("/api/auth/login",async(req,res)=>{try{const q=await pool.query("select * from users where phone=$1",[req.body.phone]);if(!q.rowCount||!(await bcrypt.compare(req.body.password,q.rows[0].password_hash)))return res.status(401).json({error:"Identifiants incorrects"});const u=q.rows[0],token=jwt.sign({id:u.id},SECRET,{expiresIn:"30d"});res.json({id:u.id,name:u.name,phone:u.phone,token})}catch(e){res.status(500).json({error:"Erreur serveur"})}});
+app.get("/api/me",auth,async(req,res)=>{const q=await pool.query("select id,name,phone from users where id=$1",[req.user.id]);res.json(q.rows[0])});
+app.get("/api/users",auth,async(req,res)=>{const q=await pool.query("select id,name,phone from users where id<>$1 order by name limit 1000",[req.user.id]);res.json(q.rows)});
+app.get("/api/messages/:id",auth,async(req,res)=>{const q=await pool.query(`select m.*,u.name sender_name from messages m join users u on u.id=m.sender_id where (sender_id=$1 and receiver_id=$2) or (sender_id=$2 and receiver_id=$1) order by m.created_at`,[req.user.id,req.params.id]);res.json(q.rows)});
+app.post("/api/messages",auth,async(req,res)=>{if(!req.body.to||!req.body.body)return res.status(400).json({error:"Message vide"});const q=await pool.query("insert into messages(sender_id,receiver_id,body) values($1,$2,$3) returning *",[req.user.id,req.body.to,req.body.body]);res.json(q.rows[0])});
+app.get("*",(req,res)=>res.sendFile(require("path").resolve("../frontend/index.html")));
+const port=process.env.PORT||3000;app.listen(port,()=>console.log("Causerie server on "+port));

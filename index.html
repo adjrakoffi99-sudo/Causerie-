@@ -29,6 +29,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .ci{position:relative;z-index:1;margin:auto;text-align:center;text-shadow:0 1px 6px #000}.ci b{display:block;font-size:26px}
 .cb{position:relative;z-index:1;display:flex;gap:14px;justify-content:center;padding:20px}
 #call .end{background:#C0392B;color:#fff;border:0;border-radius:30px;padding:13px 26px;font:inherit;font-weight:700}
+.av.on{position:relative}.av.on::after{content:"";position:absolute;right:-1px;bottom:-1px;width:13px;height:13px;border-radius:50%;background:#2EBD59;border:2px solid var(--card)}
 /* accueil */
 #sWelcome{background:linear-gradient(160deg,#1F2A5C 0%,#3B2F7A 60%,#6B3F8C 100%);color:#fff;padding:26px 22px;overflow-y:auto}
 #sWelcome h1{font-size:40px;letter-spacing:-1px}#sWelcome p{opacity:.85;margin:4px 0 22px}
@@ -102,6 +103,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   <div class="cap">Ajoute une jolie photo de toi (si tu veux)</div>
   <div class="row"><input id="wName" type="text" placeholder="Comment t'appelles-tu ?" aria-label="Prénom"></div>
   <div class="row"><select id="wCc" aria-label="Pays"></select><input id="wNum" type="tel" inputmode="tel" placeholder="Ton numéro de téléphone" aria-label="Numéro"></div>
+  <div class="row"><input id="wCode" type="tel" inputmode="numeric" maxlength="8" placeholder="Code d'accès personnel" aria-label="Code d'accès personnel"></div>
   <div id="err"></div>
   <button class="btn kola" id="ok">Confirmer</button>
 </section>
@@ -195,9 +197,15 @@ document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(g
 let wPhoto="";
 $("pick").onclick=()=>$("file").click();
 $("file").onchange=e=>{const f=e.target.files[0];if(f)shrink(f,d=>{wPhoto=d;$("pick").style.backgroundImage=`url(${d})`;$("pick").textContent=""})};
-$("ok").onclick=()=>{const n=digits($("wNum").value);
-  if(n.length<6){$("err").textContent="Oups, ce numéro paraît trop court. Vérifie-le et réessaie 🙂";return}
-  me={name:$("wName").value.trim()||"Moi",photo:wPhoto,cc:$("wCc").value,num:n};put("c_me",me);$("err").textContent="";connect();go("sHome")};
+const api=async(u,o)=>{const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(o)});const j=await r.json();if(!r.ok)throw new Error(j.error||"Erreur");return j};
+$("ok").onclick=async()=>{const n=digits($("wNum").value),code=$("wCode").value.trim();
+  if(n.length<6){$("err").textContent="Entre un numéro valide (au moins 6 chiffres).";return}
+  if(!code){$("err").textContent="Entre ton code d'accès personnel.";return}
+  $("err").textContent="Vérification…";$("ok").disabled=true;
+  try{const cc=$("wCc").value,j=await api("/api/login",{id:cc+n,code});
+    me={name:$("wName").value.trim()||"Moi",photo:wPhoto,cc,num:n,token:j.token};put("c_me",me);$("err").textContent="";connect();go("sHome")}
+  catch(e){$("err").textContent=e.name==="Error"&&e.message?e.message:"Connexion au serveur impossible."}
+  $("ok").disabled=false};
 
 /* Menu */
 function drawHome(){const b=$("meBox");b.innerHTML='<div class="av" style="width:56px;height:56px;font-size:22px"></div><div><b></b><span></span></div>';
@@ -213,11 +221,11 @@ function drawCts(){const c=$("cts");
   if(!cts.length){c.innerHTML='<p class="empty">Pas encore de contact. Touche ＋ pour ajouter quelqu&#39;un que tu aimes.</p>';return}
   c.innerHTML="";[...cts].sort((a,b)=>a.name.localeCompare(b.name)).forEach(k=>{
     const b=document.createElement("button");b.className="ct";b.innerHTML='<div class="av"></div><div><b></b><span></span></div>';
-    av(b.firstChild,"",k.name);b.querySelector("b").textContent=k.name;b.querySelector("span").textContent=k.cc+" "+k.num+(unread[k.id]?"  •  "+unread[k.id]+" nouveau(x)":"");
-    b.onclick=()=>{cur=k;unread[k.id]=0;go("sChat")};c.appendChild(b)})}
+    av(b.firstChild,"",k.name);if(onl.has(k.cc+k.num))b.firstChild.classList.add("on");b.querySelector("b").textContent=k.name;b.querySelector("span").textContent=k.cc+" "+k.num+(unread[k.id]?"  •  "+unread[k.id]+" nouveau(x)":"");
+    b.onclick=()=>{cur=k;unread[k.id]=0;go("sChat");paintPresence();askPresence()};c.appendChild(b)})}
 
 /* Conversation */
-const hh=()=>new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+const hh=t=>new Date(t||Date.now()).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 function drawChat(){av($("cAv"),"",cur.name);$("cName").textContent=cur.name;renderMsgs()}
 function renderMsgs(){const box=$("msgs"),l=chats[cur.id]||[];box.innerHTML="";
   if(!l.length&&!(cur.live||[]).length)box.innerHTML='<p class="empty">Dis un petit bonjour à '+cur.name.replace(/</g,"")+' 🌿</p>';
@@ -268,9 +276,9 @@ function net(o){if(ws&&ws.readyState===1){ws.send(JSON.stringify(o));return true
 function connect(){
   if(!me||(ws&&ws.readyState<2))return;
   try{ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws")}catch(e){return}
-  ws.onopen=()=>ws.send(JSON.stringify({type:"hello",id:me.cc+me.num}));
+  ws.onopen=()=>ws.send(JSON.stringify({type:"hello",id:me.cc+me.num,token:me.token,hide:!set.seen}));
   ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-    if(m.type==="ready"){ready=true;retry=0}else if(m.type==="msg")inMsg(m);else if(m.type==="signal")onSignal(m)};
+    if(m.type==="ready"){ready=true;retry=0;askPresence()}else if(m.type==="presence")setOnl(m.online);else if(m.type==="denied"){me=null;put("c_me",null);ws.close();go("sWelcome");toast("Accès refusé. Reconnecte-toi avec ton code.")}else if(m.type==="msg")inMsg(m);else if(m.type==="signal")onSignal(m)};
   ws.onclose=()=>{ready=false;setTimeout(connect,Math.min(1000*2**retry++,15000))};
 }
 function beep(){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.15,a.currentTime);o.start();o.stop(a.currentTime+.15)}catch(e){}}
@@ -287,7 +295,7 @@ addMsg=function(t,v){_add(t,v);sendNet(tel(),t,v)};
 async function inMsg(m){
   let c=cts.find(k=>k.cc+k.num===m.from);
   if(!c){const cc=(PAYS.find(p=>m.from.startsWith(p[1]))||["","+"])[1];c={id:Date.now()+"",name:m.from,cc,num:m.from.slice(cc.length)};cts.push(c);put("c_cts",cts)}
-  const h=m.h||hh();
+  const h=hh(m.at);
   if(m.kind==="txt"){(chats[c.id]=chats[c.id]||[]).push({t:"txt",v:m.v,h,in:1});put("c_chats",chats)}
   else{try{(c.live=c.live||[]).push({t:m.kind,v:URL.createObjectURL(await(await fetch(m.v)).blob()),h,in:1})}catch(e){return}}
   if(set.sound)beep();
@@ -295,15 +303,16 @@ async function inMsg(m){
   else{unread[c.id]=(unread[c.id]||0)+1;toast("Nouveau message de "+c.name);if(!$("sContacts").hidden)drawCts()}}
 
 /* Appels internet (WebRTC) */
+async function getIce(){try{const r=await fetch("/api/ice");return{iceServers:await r.json()}}catch(e){return ICE}}
 function callUI(on,txt,r){$("call").classList.toggle("on",on);$("cSt").textContent=txt||"";$("ans").style.display=r?"":"none"}
 async function mkPc(peer,video){
-  pc=new RTCPeerConnection(ICE);callPeer=peer;
+  pc=new RTCPeerConnection(await getIce());callPeer=peer;
   lStream=await navigator.mediaDevices.getUserMedia({audio:true,video:video?{facingMode:"user"}:false});
   lStream.getTracks().forEach(t=>pc.addTrack(t,lStream));
   $("lv").srcObject=lStream;$("lv").style.display=video?"":"none";
-  pc.ontrack=e=>{$("rv").srcObject=e.streams[0]};
+  pc.ontrack=e=>{$("rv").srcObject=e.streams[0];$("rv").play().catch(()=>{})};
   pc.onicecandidate=e=>e.candidate&&net({type:"signal",to:peer,s:"ice",d:e.candidate});
-  pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==="connected")$("cSt").textContent="En communication";else if(pc.connectionState==="failed")endCall(true)};}
+  pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==="connected")$("cSt").textContent="En communication";else if(pc.connectionState==="failed"){toast("Connexion impossible sur ce réseau");endCall(true)}};}
 async function startCall(video){
   if(!ready){if(video)return toast("Vidéo : connexion au serveur requise");location.href="tel:"+tel();return}
   const peer=tel();
@@ -330,9 +339,15 @@ $("ans").onclick=async()=>{const m=incoming;incoming=null;clearInterval(ring);
 function endCall(notify){clearInterval(ring);if(notify&&callPeer)net({type:"signal",to:callPeer,s:"end"});
   pc&&pc.close();pc=null;lStream&&lStream.getTracks().forEach(t=>t.stop());lStream=null;
   $("rv").srcObject=null;$("lv").srcObject=null;callPeer=null;incoming=null;pendIce=[];callUI(false)}
-$("hang").onclick=()=>endCall(true);
+$("hang").onclick=e=>{e.stopPropagation();endCall(true)};$("call").onclick=()=>$("rv").play().catch(()=>{});
 $("bCall").onclick=()=>startCall(false);
 $("bVid").onclick=()=>startCall(true);
+let onl=new Set();
+function askPresence(){if(ready&&ws&&ws.readyState===1)ws.send(JSON.stringify({type:"presence",ids:cts.map(k=>k.cc+k.num)}))}
+function paintPresence(){const on=cur&&onl.has(cur.cc+cur.num);if(cur&&!$("sChat").hidden){$("cAv").classList.toggle("on",!!on);$("cName").textContent=cur.name+(on?" · en ligne":"")}if(!$("sContacts").hidden)drawCts()}
+function setOnl(a){const n=new Set(a);if([...n].sort().join()!==[...onl].sort().join()){onl=n;paintPresence()}}
+setInterval(askPresence,10000);
+if(me&&!me.token){me=null;put("c_me",null)}
 if(me)connect();
 $("logoBtn").onclick=()=>go(me?"sHome":"sWelcome");
 applyLook();go("sSplash");

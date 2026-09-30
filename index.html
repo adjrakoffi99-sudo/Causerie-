@@ -22,6 +22,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .top h2{flex:1;font-size:18px}.top button{background:none;border:0;color:#fff;font-size:22px;cursor:pointer}
 .body{flex:1;overflow-y:auto;padding:14px}
 #sSplash{background:#FBFBFB;color:#1B1F33;align-items:center;justify-content:center;padding:20px;text-align:center}#sSplash .logo{background:none;border:0;padding:0;width:100%;cursor:pointer}#sSplash img{width:100%;display:block}#sSplash p{color:#5B607A;margin:6px 0 0;font-size:15px}
+.m.in{align-self:flex-start;background:var(--card)}
+#call{position:fixed;inset:0;background:#10142b;display:none;flex-direction:column;z-index:8;color:#fff}#call.on{display:flex}
+#rv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#lv{position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top,0px));width:100px;height:140px;object-fit:cover;border-radius:12px;background:#000;z-index:1}
+.ci{position:relative;z-index:1;margin:auto;text-align:center;text-shadow:0 1px 6px #000}.ci b{display:block;font-size:26px}
+.cb{position:relative;z-index:1;display:flex;gap:14px;justify-content:center;padding:20px}
+#call .end{background:#C0392B;color:#fff;border:0;border-radius:30px;padding:13px 26px;font:inherit;font-weight:700}
 /* accueil */
 #sWelcome{background:linear-gradient(160deg,#1F2A5C 0%,#3B2F7A 60%,#6B3F8C 100%);color:#fff;padding:26px 22px;overflow-y:auto}
 #sWelcome h1{font-size:40px;letter-spacing:-1px}#sWelcome p{opacity:.85;margin:4px 0 22px}
@@ -160,6 +167,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   </div>
 </section>
 
+<div id="call"><video id="rv" autoplay playsinline></video><video id="lv" autoplay playsinline muted></video><div class="ci"><b id="cName2"></b><span id="cSt"></span></div><div class="cb"><button class="btn kola" id="ans">Répondre</button><button class="end" id="hang">Raccrocher</button></div></div>
 <div id="video"><video id="cam" autoplay playsinline muted></video><button class="end" id="endV">Raccrocher</button></div>
 <div id="toast"></div>
 
@@ -189,7 +197,7 @@ $("pick").onclick=()=>$("file").click();
 $("file").onchange=e=>{const f=e.target.files[0];if(f)shrink(f,d=>{wPhoto=d;$("pick").style.backgroundImage=`url(${d})`;$("pick").textContent=""})};
 $("ok").onclick=()=>{const n=digits($("wNum").value);
   if(n.length<6){$("err").textContent="Oups, ce numéro paraît trop court. Vérifie-le et réessaie 🙂";return}
-  me={name:$("wName").value.trim()||"Moi",photo:wPhoto,cc:$("wCc").value,num:n};put("c_me",me);$("err").textContent="";go("sHome")};
+  me={name:$("wName").value.trim()||"Moi",photo:wPhoto,cc:$("wCc").value,num:n};put("c_me",me);$("err").textContent="";connect();go("sHome")};
 
 /* Menu */
 function drawHome(){const b=$("meBox");b.innerHTML='<div class="av" style="width:56px;height:56px;font-size:22px"></div><div><b></b><span></span></div>';
@@ -205,15 +213,15 @@ function drawCts(){const c=$("cts");
   if(!cts.length){c.innerHTML='<p class="empty">Pas encore de contact. Touche ＋ pour ajouter quelqu&#39;un que tu aimes.</p>';return}
   c.innerHTML="";[...cts].sort((a,b)=>a.name.localeCompare(b.name)).forEach(k=>{
     const b=document.createElement("button");b.className="ct";b.innerHTML='<div class="av"></div><div><b></b><span></span></div>';
-    av(b.firstChild,"",k.name);b.querySelector("b").textContent=k.name;b.querySelector("span").textContent=k.cc+" "+k.num;
-    b.onclick=()=>{cur=k;go("sChat")};c.appendChild(b)})}
+    av(b.firstChild,"",k.name);b.querySelector("b").textContent=k.name;b.querySelector("span").textContent=k.cc+" "+k.num+(unread[k.id]?"  •  "+unread[k.id]+" nouveau(x)":"");
+    b.onclick=()=>{cur=k;unread[k.id]=0;go("sChat")};c.appendChild(b)})}
 
 /* Conversation */
 const hh=()=>new Date().toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
 function drawChat(){av($("cAv"),"",cur.name);$("cName").textContent=cur.name;renderMsgs()}
 function renderMsgs(){const box=$("msgs"),l=chats[cur.id]||[];box.innerHTML="";
   if(!l.length&&!(cur.live||[]).length)box.innerHTML='<p class="empty">Dis un petit bonjour à '+cur.name.replace(/</g,"")+' 🌿</p>';
-  l.concat(cur.live||[]).forEach(m=>{const d=document.createElement("div");d.className="m";
+  l.concat(cur.live||[]).forEach(m=>{const d=document.createElement("div");d.className="m"+(m.in?" in":"");
     if(m.t==="txt")d.textContent=m.v;else if(m.t==="img"){const i=document.createElement("img");i.src=m.v;i.alt="Photo";d.appendChild(i)}
     else{const el=document.createElement(m.t);el.src=m.v;el.controls=true;d.appendChild(el)}
     const s=document.createElement("small");s.textContent=m.h;d.appendChild(s);box.appendChild(d)});
@@ -250,8 +258,82 @@ document.querySelectorAll("[data-k]").forEach(el=>el.onchange=()=>{set[el.datase
 $("sFile").onchange=e=>{const f=e.target.files[0];if(f)shrink(f,d=>{me.photo=d;put("c_me",me);drawSet()})};
 $("sName").onchange=()=>{me.name=$("sName").value.trim()||me.name;put("c_me",me)};
 $("clr").onclick=()=>{chats={};put("c_chats",chats);toast("C'est fait, tes discussions sont effacées.")};
-$("out").onclick=()=>{me=null;put("c_me",null);wPhoto="";$("pick").style.backgroundImage="";$("pick").textContent="📷";go("sWelcome")};
+$("out").onclick=()=>{ws&&ws.close();me=null;put("c_me",null);wPhoto="";$("pick").style.backgroundImage="";$("pick").textContent="📷";go("sWelcome")};
 
+/* ===== Réseau : messages, médias, appels ===== */
+let ws=null,ready=false,retry=0,pc=null,lStream=null,callPeer=null,incoming=null,pendIce=[],ring=null;
+const unread={};
+const ICE={iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
+function net(o){if(ws&&ws.readyState===1){ws.send(JSON.stringify(o));return true}toast("Hors ligne : non livré");return false}
+function connect(){
+  if(!me||(ws&&ws.readyState<2))return;
+  try{ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws")}catch(e){return}
+  ws.onopen=()=>ws.send(JSON.stringify({type:"hello",id:me.cc+me.num}));
+  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+    if(m.type==="ready"){ready=true;retry=0}else if(m.type==="msg")inMsg(m);else if(m.type==="signal")onSignal(m)};
+  ws.onclose=()=>{ready=false;setTimeout(connect,Math.min(1000*2**retry++,15000))};
+}
+function beep(){try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.15,a.currentTime);o.start();o.stop(a.currentTime+.15)}catch(e){}}
+const toData=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(b)});
+function smallImg(b){return new Promise(r=>{const i=new Image(),u=URL.createObjectURL(b);i.onload=()=>{const k=Math.min(1,1024/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=i.width*k;c.height=i.height*k;c.getContext("2d").drawImage(i,0,0,c.width,c.height);URL.revokeObjectURL(u);r(c.toDataURL("image/jpeg",.75))};i.src=u})}
+async function sendNet(to,t,v){
+  if(t==="txt")return net({type:"msg",to,kind:"txt",v,h:hh()});
+  try{const b=await(await fetch(v)).blob();
+    if(t!=="img"&&b.size>3.3e6)return toast("Fichier trop lourd (3 Mo max) : non envoyé");
+    net({type:"msg",to,kind:t,v:t==="img"?await smallImg(b):await toData(b),h:hh()})}
+  catch(e){toast("Envoi impossible")}}
+const _add=addMsg;
+addMsg=function(t,v){_add(t,v);sendNet(tel(),t,v)};
+async function inMsg(m){
+  let c=cts.find(k=>k.cc+k.num===m.from);
+  if(!c){const cc=(PAYS.find(p=>m.from.startsWith(p[1]))||["","+"])[1];c={id:Date.now()+"",name:m.from,cc,num:m.from.slice(cc.length)};cts.push(c);put("c_cts",cts)}
+  const h=m.h||hh();
+  if(m.kind==="txt"){(chats[c.id]=chats[c.id]||[]).push({t:"txt",v:m.v,h,in:1});put("c_chats",chats)}
+  else{try{(c.live=c.live||[]).push({t:m.kind,v:URL.createObjectURL(await(await fetch(m.v)).blob()),h,in:1})}catch(e){return}}
+  if(set.sound)beep();
+  if(cur&&cur.id===c.id&&!$("sChat").hidden)renderMsgs();
+  else{unread[c.id]=(unread[c.id]||0)+1;toast("Nouveau message de "+c.name);if(!$("sContacts").hidden)drawCts()}}
+
+/* Appels internet (WebRTC) */
+function callUI(on,txt,r){$("call").classList.toggle("on",on);$("cSt").textContent=txt||"";$("ans").style.display=r?"":"none"}
+async function mkPc(peer,video){
+  pc=new RTCPeerConnection(ICE);callPeer=peer;
+  lStream=await navigator.mediaDevices.getUserMedia({audio:true,video:video?{facingMode:"user"}:false});
+  lStream.getTracks().forEach(t=>pc.addTrack(t,lStream));
+  $("lv").srcObject=lStream;$("lv").style.display=video?"":"none";
+  pc.ontrack=e=>{$("rv").srcObject=e.streams[0]};
+  pc.onicecandidate=e=>e.candidate&&net({type:"signal",to:peer,s:"ice",d:e.candidate});
+  pc.onconnectionstatechange=()=>{if(!pc)return;if(pc.connectionState==="connected")$("cSt").textContent="En communication";else if(pc.connectionState==="failed")endCall(true)};}
+async function startCall(video){
+  if(!ready){if(video)return toast("Vidéo : connexion au serveur requise");location.href="tel:"+tel();return}
+  const peer=tel();
+  try{await mkPc(peer,video)}catch(e){endCall(false);return toast("Caméra ou micro refusé.")}
+  $("cName2").textContent=cur.name;callUI(true,"Appel en cours…",false);
+  const o=await pc.createOffer();await pc.setLocalDescription(o);
+  net({type:"signal",to:peer,s:"offer",video,d:o});
+  setTimeout(()=>{if(pc&&callPeer===peer&&pc.connectionState!=="connected"){toast("Pas de réponse");endCall(true)}},45000)}
+async function onSignal(m){
+  if(m.s==="offer"){
+    if(pc||incoming)return net({type:"signal",to:m.from,s:"busy"});
+    incoming=m;callPeer=m.from;const c=cts.find(k=>k.cc+k.num===m.from);
+    $("cName2").textContent=c?c.name:m.from;callUI(true,m.video?"Appel vidéo entrant…":"Appel entrant…",true);
+    clearInterval(ring);ring=setInterval(()=>{beep();navigator.vibrate&&navigator.vibrate(300)},1500)}
+  else if(m.from!==callPeer)return;
+  else if(m.s==="answer"&&pc){await pc.setRemoteDescription(m.d);pendIce.splice(0).forEach(x=>pc.addIceCandidate(x).catch(()=>{}))}
+  else if(m.s==="ice"){pc&&pc.remoteDescription?pc.addIceCandidate(m.d).catch(()=>{}):pendIce.push(m.d)}
+  else if(m.s==="end"||m.s==="busy"){toast(m.s==="busy"?"Occupé":"Appel terminé");endCall(false)}}
+$("ans").onclick=async()=>{const m=incoming;incoming=null;clearInterval(ring);
+  try{await mkPc(m.from,m.video)}catch(e){net({type:"signal",to:m.from,s:"end"});endCall(false);return toast("Caméra ou micro refusé.")}
+  await pc.setRemoteDescription(m.d);pendIce.splice(0).forEach(x=>pc.addIceCandidate(x).catch(()=>{}));
+  const a=await pc.createAnswer();await pc.setLocalDescription(a);
+  net({type:"signal",to:m.from,s:"answer",d:a});callUI(true,"Connexion…",false)};
+function endCall(notify){clearInterval(ring);if(notify&&callPeer)net({type:"signal",to:callPeer,s:"end"});
+  pc&&pc.close();pc=null;lStream&&lStream.getTracks().forEach(t=>t.stop());lStream=null;
+  $("rv").srcObject=null;$("lv").srcObject=null;callPeer=null;incoming=null;pendIce=[];callUI(false)}
+$("hang").onclick=()=>endCall(true);
+$("bCall").onclick=()=>startCall(false);
+$("bVid").onclick=()=>startCall(true);
+if(me)connect();
 $("logoBtn").onclick=()=>go(me?"sHome":"sWelcome");
 applyLook();go("sSplash");
 </script>
